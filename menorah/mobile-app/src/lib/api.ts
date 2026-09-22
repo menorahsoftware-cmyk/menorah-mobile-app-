@@ -134,7 +134,7 @@ export interface Message {
   content: string;
   timestamp: string;
   createdAt?: string;
-  type: 'text' | 'image' | 'file';
+  type: 'text' | 'image' | 'file' | 'emergency';
   status?: 'sent' | 'delivered' | 'read';
   roomId?: string;
 }
@@ -700,12 +700,16 @@ class ApiClient {
     });
   }
 
-  async sendMessage(roomId: string, content: string, type: 'text' | 'image' | 'file' = 'text'): Promise<ApiResponse<{ message: Message }>> {
+  async sendMessage(roomId: string, content: string, type: 'text' | 'image' | 'file' | 'emergency' = 'text'): Promise<ApiResponse<{ message: Message }>> {
     return this.request({
       method: 'POST',
       url: `/chat/rooms/${roomId}/messages`,
       data: { content, type },
     });
+  }
+
+  async getChatAccess(roomId: string): Promise<ApiResponse<{ canSend: boolean; canSendEmergency: boolean; isWithinCounsellorHours: boolean }>> {
+    return this.request({ method: 'GET', url: `/chat/rooms/${roomId}/access` });
   }
 
   async markMessageAsRead(roomId: string, messageId: string): Promise<ApiResponse<void>> {

@@ -28,7 +28,6 @@ interface RegisterData {
   phone: string;
   password: string;
   dateOfBirth: string;
-  gender: string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);

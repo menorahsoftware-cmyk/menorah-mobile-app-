@@ -9,7 +9,7 @@ export interface ChatMessage {
   senderImage?: string | null;
   content: string;
   timestamp: string;
-  type: 'text' | 'image' | 'file';
+  type: 'text' | 'image' | 'file' | 'emergency';
   status?: 'sent' | 'delivered' | 'read';
   roomId?: string; // Added for context
 }
@@ -272,7 +272,7 @@ class SocketService {
   }
 
   // Send a message
-  sendMessage(roomId: string, content: string, type: 'text' | 'image' | 'file' = 'text'): void {
+  sendMessage(roomId: string, content: string, type: 'text' | 'image' | 'file' | 'emergency' = 'text'): void {
     if (this.socket && this.isConnected) {
       this.socket.emit('send_message', { roomId, content, type });
       console.log('Message sent:', { roomId, content, type });

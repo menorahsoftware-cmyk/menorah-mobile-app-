@@ -92,7 +92,7 @@ class ApiClient {
   // ─── Auth ──────────────────────────────────────────────────────────────────
   async register(data: {
     firstName: string; lastName: string; email: string;
-    phone: string; password: string; dateOfBirth: string; gender: string;
+    phone: string; password: string; dateOfBirth: string;
   }): Promise<ApiResponse<{ email: string }>> {
     return this.post<{ email: string }>('/auth/register', data);
   }
@@ -297,6 +297,10 @@ class ApiClient {
 
   async sendMessage(roomId: string, content: string, type = 'text'): Promise<ApiResponse<{ message: ChatMessage }>> {
     return this.post<{ message: ChatMessage }>(`/chat/rooms/${roomId}/messages`, { content, type });
+  }
+
+  async getChatAccess(roomId: string): Promise<ApiResponse<{ canSend: boolean; canSendEmergency: boolean; isWithinCounsellorHours: boolean }>> {
+    return this.get(`/chat/rooms/${roomId}/access`);
   }
 
   async markMessageAsRead(roomId: string, messageId: string): Promise<ApiResponse<void>> {

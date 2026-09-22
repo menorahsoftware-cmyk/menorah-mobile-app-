@@ -359,16 +359,16 @@ function PhoneScreen({
     const chatRows =
       chatFilter === "counsellors"
         ? [
-            ["test counsellor1", "stress management", "Chat", "T"],
-            ["test counsellor2", "anxiety issues", "Chat", "T"],
+            ["John Doe", "stress management", "Chat", "J"],
+            ["John Doe", "anxiety issues", "Chat", "J"],
             ["Jayden Jacob", "CEO testing", "Chat", "J"]
           ]
         : chatFilter === "unread"
-          ? [["test counsellor2", "wasssap", "1:32 AM", "T"]]
+          ? [["John Doe", "wasssap", "1:32 AM", "J"]]
           : [
-              ["test counsellor2", "wasssap", "1:32 AM", "T"],
+              ["John Doe", "wasssap", "1:32 AM", "J"],
               ["Jayden Jacob", "Hello", "1:31 AM", "J"],
-              ["test counsellor1", "hi", "4:59 PM", "T"]
+              ["John Doe", "hi", "4:59 PM", "J"]
             ];
 
     return (

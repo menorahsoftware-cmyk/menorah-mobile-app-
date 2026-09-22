@@ -19,6 +19,8 @@ export default function ChatThread({ navigation, route }: any) {
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [safetyActionLoading, setSafetyActionLoading] = useState(false);
+  const [chatAccess, setChatAccess] = useState<{ canSend: boolean; canSendEmergency: boolean; isWithinCounsellorHours: boolean } | null>(null);
+  const [urgentAlertText, setUrgentAlertText] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -61,9 +63,16 @@ export default function ChatThread({ navigation, route }: any) {
     }
   }, [fetchMessages, roomId]);
 
+  const loadChatAccess = useCallback(async () => {
+    if (!roomId) return;
+    const response = await api.getChatAccess(roomId);
+    if (response.success && response.data) setChatAccess(response.data);
+  }, [roomId]);
+
   useEffect(() => {
     if (roomId) {
       loadMessages();
+      loadChatAccess();
       joinRoom(roomId);
     }
 
@@ -72,7 +81,23 @@ export default function ChatThread({ navigation, route }: any) {
         leaveRoom(roomId);
       }
     };
-  }, [joinRoom, leaveRoom, loadMessages, roomId]);
+  }, [joinRoom, leaveRoom, loadMessages, loadChatAccess, roomId]);
+
+  const openBooking = () => {
+    navigation.navigate('BookingReview', {
+      counsellorId,
+      counsellorName,
+      sessionType: 'chat',
+    });
+  };
+
+  const showBookingPrompt = () => {
+    Alert.alert(
+      'Book a session to message',
+      `To message ${counsellorName}, please book a chat session first.`,
+      [{ text: 'Not now', style: 'cancel' }, { text: 'Book session', onPress: openBooking }],
+    );
+  };
 
   useEffect(() => {
     if (roomMessages.length > 0) {
@@ -84,6 +109,10 @@ export default function ChatThread({ navigation, route }: any) {
 
   const handleSendMessage = async () => {
     if (!message.trim() || !roomId || sending) return;
+    if (!chatAccess?.canSend) {
+      showBookingPrompt();
+      return;
+    }
     
     const messageText = message.trim();
     setMessage('');
@@ -106,6 +135,20 @@ export default function ChatThread({ navigation, route }: any) {
       setMessage(messageText); // Restore message on error
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendUrgentAlert = async () => {
+    if (!urgentAlertText.trim() || !roomId || sending) return;
+    setSending(true);
+    const response = await api.sendMessage(roomId, urgentAlertText.trim(), 'emergency');
+    setSending(false);
+    if (response.success) {
+      setUrgentAlertText('');
+      await loadChatAccess();
+      Alert.alert('Urgent alert sent', 'Your counsellor has been notified. If you are in immediate danger, contact local emergency services now.');
+    } else {
+      Alert.alert('Unable to send urgent alert', response.message || 'Please contact local emergency services if you are in immediate danger.');
     }
   };
 
@@ -432,7 +475,7 @@ export default function ChatThread({ navigation, route }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* Input */}
+        {/* Booking-gated input */}
         <View style={{
           backgroundColor: colors.card,
           paddingHorizontal: 16,
@@ -440,6 +483,38 @@ export default function ChatThread({ navigation, route }: any) {
           borderTopWidth: 1,
           borderTopColor: colors.border
         }}>
+          {!chatAccess?.canSend && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ color: colors.muted, fontSize: 13, marginBottom: 8 }}>
+                Book a session with {counsellorName} to send messages.
+              </Text>
+              <TouchableOpacity
+                onPress={openBooking}
+                style={{ alignSelf: 'flex-start', backgroundColor: colors.primary, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9 }}
+              >
+                <Text style={{ color: primaryActionText, fontWeight: '700' }}>Book a chat session</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {!chatAccess?.canSend && chatAccess?.canSendEmergency && (
+            <View style={{ marginBottom: 10 }}>
+              <TextInput
+                value={urgentAlertText}
+                onChangeText={setUrgentAlertText}
+                placeholder="One-time urgent alert to your counsellor"
+                placeholderTextColor={colors.muted}
+                style={{ borderWidth: 1, borderColor: crisisBorder, borderRadius: 14, padding: 10, color: colors.cardText, marginBottom: 7 }}
+                multiline
+                maxLength={1000}
+              />
+              <TouchableOpacity onPress={sendUrgentAlert} disabled={!urgentAlertText.trim() || sending}>
+                <Text style={{ color: crisisText, fontWeight: '700' }}>Send one-time urgent alert</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {!chatAccess?.canSend && chatAccess?.isWithinCounsellorHours && (
+            <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 10 }}>Urgent alerts are available after the counsellor's working hours.</Text>
+          )}
           <View style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -461,11 +536,14 @@ export default function ChatThread({ navigation, route }: any) {
                 maxHeight: 100
               }}
               multiline
-              editable={!sending}
+              editable={!sending && Boolean(chatAccess?.canSend)}
+              onFocus={() => {
+                if (!chatAccess?.canSend) showBookingPrompt();
+              }}
             />
             <TouchableOpacity
               onPress={handleSendMessage}
-              disabled={!message.trim() || sending}
+              disabled={!message.trim() || sending || !chatAccess?.canSend}
               style={{
                 backgroundColor: message.trim() ? colors.primary : colors.muted,
                 borderRadius: 24,

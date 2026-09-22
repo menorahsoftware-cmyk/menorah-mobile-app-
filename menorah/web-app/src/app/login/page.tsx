@@ -89,7 +89,7 @@ export default function LoginPage() {
               </p>
             </blockquote>
             <figcaption>
-              <p className={styles.panelQuoteAuthor}>— Dr. Meera K., Clinical Psychologist</p>
+              <p className={styles.panelQuoteAuthor}>— Meera K., Clinical Psychologist</p>
             </figcaption>
           </figure>
         </div>

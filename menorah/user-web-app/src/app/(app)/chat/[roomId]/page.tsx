@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, CheckCheck, Clock3, Send } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Avatar, Spinner } from '@/components/ui';
+import { Avatar, Button, Modal, Spinner } from '@/components/ui';
 import { formatMessageTime } from '@/lib/utils';
 import { useSocket } from '@/context/SocketContext';
 import { useAuth } from '@/context/AuthContext';
@@ -85,6 +85,9 @@ export default function ChatThreadPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage]               = useState(1);
   const [hasMore, setHasMore]         = useState(true);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [emergencyText, setEmergencyText] = useState('');
+  const [bookingPromptOpen, setBookingPromptOpen] = useState(false);
 
   const bottomRef    = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
@@ -99,6 +102,14 @@ export default function ChatThreadPage() {
     refetchOnMount: true,
   });
   const room = roomsData?.data?.chatRooms?.find((r) => r.id === roomId);
+  const { data: accessData, refetch: refetchAccess } = useQuery({ queryKey: ['chatAccess', roomId], queryFn: () => api.getChatAccess(roomId), staleTime: 0 });
+  const canSend = accessData?.data?.canSend ?? false;
+  const canSendEmergency = accessData?.data?.canSendEmergency ?? false;
+  const isWithinCounsellorHours = accessData?.data?.isWithinCounsellorHours ?? false;
+
+  useEffect(() => {
+    if (room && accessData?.data && !canSend) setBookingPromptOpen(true);
+  }, [room, accessData, canSend]);
 
   // Load initial messages
   const { isLoading } = useQuery({
@@ -252,6 +263,15 @@ export default function ChatThreadPage() {
     }
   };
 
+  const sendEmergency = async () => {
+    if (!emergencyText.trim()) return;
+    const res = await api.sendMessage(roomId, emergencyText.trim(), 'emergency');
+    if (res.success && res.data?.message) {
+      setMessages((prev) => [...prev, res.data!.message]);
+      setEmergencyText(''); setEmergencyOpen(false); refetchAccess();
+    }
+  };
+
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
@@ -351,7 +371,23 @@ export default function ChatThreadPage() {
         )}
       </div>
 
+      <Modal open={emergencyOpen} onClose={() => setEmergencyOpen(false)} title="Send one-time urgent alert">
+        <p className="mb-3 text-sm text-gray-600">This sends one alert to your counsellor outside their working hours. It is not an emergency service. If you are in immediate danger, contact local emergency services now.</p>
+        <textarea value={emergencyText} onChange={(e) => setEmergencyText(e.target.value)} maxLength={1000} rows={4} className="w-full rounded-xl border p-3" placeholder="Briefly explain what is urgent…" />
+        <Button className="mt-3" fullWidth onClick={sendEmergency} disabled={!emergencyText.trim()}>Send alert</Button>
+      </Modal>
+
+      <Modal open={bookingPromptOpen} onClose={() => setBookingPromptOpen(false)} title="Book a session to message">
+        <p className="mb-4 text-sm text-gray-600 dark:text-primary-100/70">Book a paid chat session with {room?.counsellorName ?? 'this counsellor'} before sending regular messages.</p>
+        <div className="flex gap-2">
+          <Button fullWidth onClick={() => router.push(`/bookings/new${room?.counsellorId ? `?counsellorId=${room.counsellorId}` : ''}`)}>Book a session</Button>
+          {canSendEmergency && <Button variant="secondary" onClick={() => { setBookingPromptOpen(false); setEmergencyOpen(true); }}>Urgent alert</Button>}
+        </div>
+        {!canSendEmergency && isWithinCounsellorHours && <p className="mt-3 text-xs text-gray-500">Urgent alerts are available outside the counsellor’s working hours.</p>}
+      </Modal>
+
       {/* Input bar */}
+      {canSend ? (
       <div className="flex shrink-0 items-end gap-3 border-t border-gray-100 bg-white/92 px-4 py-3 backdrop-blur-xl dark:border-primary-900 dark:bg-[#07110b]/92">
         <textarea
           ref={textareaRef}
@@ -379,6 +415,17 @@ export default function ChatThreadPage() {
           <Send className="w-4 h-4" />
         </button>
       </div>
+      ) : (
+        <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3 dark:border-primary-900 dark:bg-[#07110b]">
+          <p className="text-sm font-medium text-gray-600 dark:text-primary-100">Book a session with {room?.counsellorName ?? 'this counsellor'} to send messages.</p>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={() => router.push(`/bookings/new${room?.counsellorId ? `?counsellorId=${room.counsellorId}` : ''}`)}>Book a session</Button>
+            <Button size="sm" variant="secondary" disabled={!canSendEmergency} onClick={() => setEmergencyOpen(true)}>
+              {canSendEmergency ? 'Send urgent alert' : isWithinCounsellorHours ? 'Available after working hours' : 'Urgent alert sent'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

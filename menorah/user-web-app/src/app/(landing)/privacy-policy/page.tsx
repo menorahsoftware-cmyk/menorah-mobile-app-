@@ -59,7 +59,7 @@ const privacySections = [
       {
         title: "3.1 Data You Provide Directly",
         items: [
-          "Registration data: name, date of birth, email address, phone number, gender identity.",
+          "Registration data: name, date of birth, email address, and phone number.",
           "Health and wellness data: mood logs, journal entries, symptom check-ins, mental health assessments.",
           "Session data: audio/video recordings of therapy sessions, only with explicit consent, and session notes.",
           "Payment data: billing details processed via PCI-DSS compliant payment gateways; we do not store card numbers.",

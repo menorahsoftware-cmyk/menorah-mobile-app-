@@ -4,6 +4,7 @@ const { auth } = require('../middleware/auth');
 const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const Counsellor = require('../models/Counsellor');
+const Booking = require('../models/Booking');
 const { getRedisClient } = require('../config/redis');
 
 // Socket.IO instance will be set from server.js to avoid circular dependency
@@ -13,6 +14,47 @@ const setSocketIO = (io) => {
 };
 
 const router = express.Router();
+
+const getActivePaidBooking = (userId, counsellorId) => {
+  const now = new Date();
+  return Booking.findOne({
+    user: userId,
+    counsellor: counsellorId,
+    paymentStatus: 'paid',
+    status: { $in: ['confirmed', 'in-progress'] },
+    scheduledAt: { $lte: now },
+    $expr: { $gte: [{ $add: ['$scheduledAt', { $multiply: ['$sessionDuration', 60000] }] }, now] },
+  }).select('_id').lean();
+};
+
+// Emergency alerts are deliberately limited to the time a counsellor is not
+// scheduled to be available.  The booking check above remains the only way a
+// user can send ordinary chat messages.
+const isWithinCounsellorHours = (counsellor, at = new Date()) => {
+  const timezone = counsellor?.timezone || 'Asia/Kolkata';
+  let parts;
+  try {
+    parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(at).map(({ type, value }) => [type, value]));
+  } catch {
+    return false;
+  }
+
+  const day = parts.weekday?.toLowerCase();
+  const hours = day && counsellor?.availability?.[day];
+  if (!hours?.isAvailable || !/^\d{2}:\d{2}$/.test(hours.start || '') || !/^\d{2}:\d{2}$/.test(hours.end || '')) {
+    return false;
+  }
+
+  const now = Number(parts.hour) * 60 + Number(parts.minute);
+  const [startHour, startMinute] = hours.start.split(':').map(Number);
+  const [endHour, endMinute] = hours.end.split(':').map(Number);
+  const start = startHour * 60 + startMinute;
+  const end = endHour * 60 + endMinute;
+  return start <= end ? now >= start && now < end : now >= start || now < end;
+};
 
 // ─── Redis-backed presence ─────────────────────────────────────────────────
 // TTL of 5 min — acts as a safety net if the disconnect event is missed
@@ -94,6 +136,7 @@ router.get('/rooms', auth, async (req, res) => {
 
       return {
         id: room._id.toString(),
+        counsellorId: room.counsellor?._id?.toString(),
         counsellorName: counsellorName,
         counsellorImage: counsellorUser?.profileImage || null,
         counsellorUserId: counsellorUserId, // Add counselor userId for presence tracking
@@ -116,6 +159,23 @@ router.get('/rooms', auth, async (req, res) => {
       message: 'Internal server error'
     });
   }
+});
+
+router.get('/rooms/:roomId/access', [param('roomId').isMongoId()], auth, async (req, res) => {
+  const room = await ChatRoom.findById(req.params.roomId).select('user counsellor').lean();
+  if (!room || room.user.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Access denied' });
+  const [activeBooking, counsellor] = await Promise.all([
+    getActivePaidBooking(req.user._id, room.counsellor),
+    Counsellor.findById(room.counsellor).select('availability timezone').lean(),
+  ]);
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const emergencySent = await Message.exists({ room: room._id, sender: req.user._id, type: 'emergency', createdAt: { $gte: since } });
+  const isWithinHours = isWithinCounsellorHours(counsellor);
+  res.json({ success: true, data: {
+    canSend: Boolean(activeBooking),
+    canSendEmergency: !isWithinHours && !emergencySent,
+    isWithinCounsellorHours: isWithinHours,
+  } });
 });
 
 // @route   GET /api/chat/rooms/:roomId/messages
@@ -247,7 +307,7 @@ router.get('/rooms/:roomId/messages', [
 router.post('/rooms/:roomId/messages', [
   param('roomId').isMongoId().withMessage('Invalid room ID'),
   body('content').notEmpty().trim().withMessage('Message content is required'),
-  body('type').optional().isIn(['text', 'image', 'file']).withMessage('Invalid message type')
+  body('type').optional().isIn(['text', 'image', 'file', 'emergency']).withMessage('Invalid message type')
 ], auth, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -295,6 +355,28 @@ router.post('/rooms/:roomId/messages', [
         success: false,
         message: 'Access denied'
       });
+    }
+
+    // Users can always read their history, but may send ordinary messages only
+    // during a paid session's scheduled window. Emergency alerts are limited to
+    // one per user/counsellor room in each rolling 24-hour period.
+    if (isUser) {
+      if (type === 'emergency') {
+        const counsellor = await Counsellor.findById(room.counsellor._id).select('availability timezone').lean();
+        if (isWithinCounsellorHours(counsellor)) {
+          return res.status(403).json({ success: false, message: 'Emergency alerts are available outside this counsellor\'s working hours. During working hours, please book a session.' });
+        }
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentEmergency = await Message.exists({ room: roomId, sender: userId, type: 'emergency', createdAt: { $gte: since } });
+        if (recentEmergency) {
+          return res.status(429).json({ success: false, message: 'You can send one emergency alert to this counsellor every 24 hours.' });
+        }
+      } else {
+        const activeBooking = await getActivePaidBooking(userId, room.counsellor._id);
+        if (!activeBooking) {
+          return res.status(403).json({ success: false, message: 'Messaging is available only during your paid session. You may book another session or send one emergency alert.' });
+        }
+      }
     }
 
     // Strip HTML tags (defense-in-depth against stored XSS if content is ever rendered as HTML)

@@ -26,7 +26,7 @@ const messageSchema = new mongoose.Schema({
   // Message type
   type: {
     type: String,
-    enum: ['text', 'image', 'file'],
+    enum: ['text', 'image', 'file', 'emergency'],
     default: 'text'
   },
 
@@ -130,4 +130,3 @@ messageSchema.methods.softDelete = function(userId) {
 };
 
 module.exports = mongoose.model('Message', messageSchema);
-
