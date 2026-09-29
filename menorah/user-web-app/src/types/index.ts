@@ -260,6 +260,7 @@ export interface AppNotification {
 // ─── API Response ─────────────────────────────────────────────────────────────
 export interface ApiResponse<T = unknown> {
   success: boolean;
+  code?: string;
   message?: string;
   data?: T;
   errors?: Array<{ field?: string; message: string }>;

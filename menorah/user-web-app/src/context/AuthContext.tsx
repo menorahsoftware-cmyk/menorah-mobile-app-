@@ -10,6 +10,7 @@ interface AuthContextValue {
   isAuthed: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string; needsVerification?: boolean }>;
+  loginWithGoogle: (credential: string, intent: 'signin' | 'signup') => Promise<{ success: boolean; message?: string; isNewUser?: boolean; needsVerification?: boolean; requiresSignUp?: boolean; requiresProfileCompletion?: boolean }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (code: string) => Promise<{ success: boolean; message?: string }>;
@@ -64,6 +65,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true, needsVerification: true, message: 'Please verify your email address.' };
       }
       return { success: true };
+    }
+    return { success: false, message: res.message };
+  };
+
+  const loginWithGoogle = async (credential: string, intent: 'signin' | 'signup') => {
+    const res = await api.loginWithGoogle(credential, intent);
+    if (res.code === 'ACCOUNT_NOT_FOUND' && intent === 'signin') {
+      return { success: false, requiresSignUp: true, message: res.message || 'Create a Menorah account to continue with Google.' };
+    }
+    if (res.success && res.data?.user) {
+      setUser(res.data.user);
+      return {
+        success: true,
+        isNewUser: res.data.isNewUser,
+        requiresProfileCompletion: res.data.user.profileCompleted === false,
+      };
     }
     return { success: false, message: res.message };
   };
@@ -129,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, isAuthed: !!user, isLoading,
-      login, register, logout,
+      login, loginWithGoogle, register, logout,
       verifyEmail, verifyPhone, verifyEmailOTP,
       forgotPassword, resetPassword,
       updateUser, refreshUser,

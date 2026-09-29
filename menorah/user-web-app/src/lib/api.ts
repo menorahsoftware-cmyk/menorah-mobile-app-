@@ -103,6 +103,12 @@ class ApiClient {
     return res;
   }
 
+  async loginWithGoogle(credential: string, intent: 'signin' | 'signup'): Promise<ApiResponse<{ user: User; token: string; isNewUser?: boolean }>> {
+    const res = await this.post<{ user: User; token: string; isNewUser?: boolean }>('/auth/google', { credential, intent });
+    if (res.success && res.data?.token) authStorage.setToken(res.data.token);
+    return res;
+  }
+
   async verifyEmail(code: string): Promise<ApiResponse<{ user: User }>> {
     return this.post<{ user: User }>('/auth/verify-email', { code });
   }
