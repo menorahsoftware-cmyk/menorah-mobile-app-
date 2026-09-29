@@ -133,6 +133,7 @@ export interface Booking {
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 export interface ChatRoom {
   id: string;
+  counsellorId?: string;
   counsellorName: string;
   counsellorImage?: string;
   counsellorUserId?: string;
