@@ -155,8 +155,8 @@ class ApiClient {
     return this.put<{ user: User }>('/users/address', data);
   }
 
-  async updateEmergencyContact(data: User['emergencyContact']): Promise<ApiResponse<{ user: User }>> {
-    return this.put<{ user: User }>('/users/emergency-contact', data);
+  async updateEmergencyContact(data: User['emergencyContact']): Promise<ApiResponse<{ emergencyContact: User['emergencyContact'] }>> {
+    return this.put<{ emergencyContact: User['emergencyContact'] }>('/users/emergency-contact', data);
   }
 
   async updateNotificationPreferences(data: User['notificationPreferences']): Promise<ApiResponse<{ user: User }>> {
