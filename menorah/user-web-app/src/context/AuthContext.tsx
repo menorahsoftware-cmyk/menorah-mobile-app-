@@ -79,7 +79,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return {
         success: true,
         isNewUser: res.data.isNewUser,
-        requiresProfileCompletion: res.data.user.profileCompleted === false,
       };
     }
     return { success: false, message: res.message };
